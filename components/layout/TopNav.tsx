@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { User, Settings, LogOut, Shield, Menu, X } from "lucide-react";
+import { User, Settings, LogOut, Shield, Menu, X, BookOpen } from "lucide-react";
 import { useState } from "react";
 
 export default function TopNav() {
@@ -68,6 +68,19 @@ export default function TopNav() {
               <span className="flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5" />
                 Persona
+              </span>
+            </Link>
+            <Link
+              href="/knowledge-base"
+              className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                pathname?.startsWith("/knowledge-base")
+                  ? "bg-stone-700 text-amber-400"
+                  : "text-stone-300 hover:text-white hover:bg-stone-700/50"
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                <BookOpen className="w-3.5 h-3.5" />
+                Knowledge Base
               </span>
             </Link>
             {canAccessAdmin && (
@@ -149,6 +162,13 @@ export default function TopNav() {
               onClick={() => setMobileOpen(false)}
             >
               Persona
+            </Link>
+            <Link
+              href="/knowledge-base"
+              className="block px-3 py-2 rounded text-sm text-stone-300 hover:bg-stone-700"
+              onClick={() => setMobileOpen(false)}
+            >
+              Knowledge Base
             </Link>
             {canAccessAdmin && (
               <Link

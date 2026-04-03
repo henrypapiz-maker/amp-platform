@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 export default auth((req) => {
   const { pathname } = req.nextUrl;
 
-  // Protect dashboard routes
-  if (pathname.startsWith("/dashboard") || pathname.startsWith("/api/targets") || pathname.startsWith("/api/evaluations") || pathname.startsWith("/api/evidence") || pathname.startsWith("/api/persona") || pathname.startsWith("/api/weights") || pathname.startsWith("/api/admin") || pathname.startsWith("/api/audit")) {
+  // Protect dashboard + v2 routes
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/onboarding") || pathname.startsWith("/knowledge-base") || pathname.startsWith("/api/targets") || pathname.startsWith("/api/evaluations") || pathname.startsWith("/api/evidence") || pathname.startsWith("/api/persona") || pathname.startsWith("/api/weights") || pathname.startsWith("/api/admin") || pathname.startsWith("/api/audit") || pathname.startsWith("/api/knowledge-base") || pathname.startsWith("/api/subscription")) {
     if (!req.auth) {
       const loginUrl = new URL("/login", req.url);
       return NextResponse.redirect(loginUrl);
@@ -28,6 +28,8 @@ export default auth((req) => {
 export const config = {
   matcher: [
     "/dashboard/:path*",
+    "/onboarding/:path*",
+    "/knowledge-base/:path*",
     "/api/targets/:path*",
     "/api/evaluations/:path*",
     "/api/evidence/:path*",
@@ -36,5 +38,7 @@ export const config = {
     "/api/admin/:path*",
     "/api/audit/:path*",
     "/api/ai/:path*",
+    "/api/knowledge-base/:path*",
+    "/api/subscription/:path*",
   ],
 };

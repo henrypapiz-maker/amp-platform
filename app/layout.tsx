@@ -3,6 +3,9 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import QueryProvider from "@/providers/QueryProvider";
+import { Toaster } from "@/components/ui/sonner";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -22,9 +25,19 @@ export default function RootLayout({
       <body className="antialiased bg-stone-900 text-white">
         <SessionProvider>
           <TooltipProvider>
-            {children}
+            <QueryProvider>
+              <ErrorBoundary>
+                {children}
+              </ErrorBoundary>
+            </QueryProvider>
           </TooltipProvider>
         </SessionProvider>
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            className: "bg-stone-800 text-stone-100 border-stone-700",
+          }}
+        />
       </body>
     </html>
   );

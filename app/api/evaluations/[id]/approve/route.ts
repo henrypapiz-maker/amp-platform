@@ -1,15 +1,24 @@
+// ═══════════════════════════════════════════════════════════════
+// AMP v2 — /api/evaluations/[id]/approve
+// Updated with:
+//   - Crystallization on dual auth passage
+//   - Break-crystal endpoint (DELETE method)
+//   - Full prior-state snapshotting
+// ═══════════════════════════════════════════════════════════════
+
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
   gateApprovals, gateEvaluations, gateTolerances,
-  targets, auditLog
+  dimensionScores, targets, auditLog
 } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { hasPermission } from "@/lib/permissions";
 import { GATES } from "@/lib/gates";
+import { crystallizeGate, breakCrystal } from "@/lib/template-engine";
 
-// GET — fetch approvals for an evaluation
+// ── GET: Fetch approval status + crystallization state ────────
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -17,40 +26,38 @@ export async function GET(
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const orgId = (session.user as any).orgId;
+
   const approvals = await db
-    .select()
-    .from(gateApprovals)
+    .select().from(gateApprovals)
     .where(eq(gateApprovals.evaluationId, params.id))
     .orderBy(gateApprovals.createdAt);
 
-  // Get the evaluation to find tolerance config
   const [evaluation] = await db
-    .select()
-    .from(gateEvaluations)
+    .select().from(gateEvaluations)
     .where(eq(gateEvaluations.id, params.id));
 
   if (!evaluation) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Get org tolerance config for this gate
-  const orgId = (session.user as any).orgId;
+  // Get tolerance config
   const [tolerance] = await db
-    .select()
-    .from(gateTolerances)
-    .where(
-      and(
-        eq(gateTolerances.orgId, orgId),
-        eq(gateTolerances.gateCode, evaluation.gateCode)
-      )
-    )
-    .limit(1);
+    .select().from(gateTolerances)
+    .where(and(
+      eq(gateTolerances.orgId, orgId),
+      eq(gateTolerances.gateCode, evaluation.gateCode)
+    )).limit(1);
 
-  // Default gate config from definitions
   const gateDef = GATES.find((g) => g.code === evaluation.gateCode);
   const requiredApprovals = tolerance?.requiredApprovals || 2;
   const approverRoles = tolerance?.approverRoles || ["admin", "analyst"];
 
   const approveCount = approvals.filter((a) => a.decision === "approve").length;
   const rejectCount = approvals.filter((a) => a.decision === "reject").length;
+
+  // Crystallization state
+  const isCrystallized = (evaluation as any).isCrystallized || false;
+  const crystallizedAt = (evaluation as any).crystallizedAt || null;
+  const moduleName = (evaluation as any).moduleName || null;
 
   return NextResponse.json({
     approvals,
@@ -70,10 +77,16 @@ export async function GET(
       totalRequired: requiredApprovals,
       canAdvance: approveCount >= requiredApprovals && rejectCount === 0,
     },
+    crystallization: {
+      isCrystallized,
+      crystallizedAt,
+      moduleName,
+      templateVersion: (evaluation as any).templateVersionSnapshot || null,
+    },
   });
 }
 
-// POST — submit an approval or rejection
+// ── POST: Submit approval (triggers crystallization if threshold met)
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -92,27 +105,31 @@ export async function POST(
   const { decision, rationale } = body;
 
   if (!["approve", "reject", "conditional"].includes(decision)) {
-    return NextResponse.json({ error: "Invalid decision. Must be: approve, reject, conditional" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid decision" }, { status: 400 });
   }
 
   // Get evaluation
   const [evaluation] = await db
-    .select()
-    .from(gateEvaluations)
+    .select().from(gateEvaluations)
     .where(eq(gateEvaluations.id, params.id));
+  if (!evaluation) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  if (!evaluation) return NextResponse.json({ error: "Evaluation not found" }, { status: 404 });
+  // Block approvals on crystallized gates
+  if ((evaluation as any).isCrystallized) {
+    return NextResponse.json(
+      { error: "Gate is crystallized. Break crystal before modifying approvals." },
+      { status: 409 }
+    );
+  }
 
-  // Check this user hasn't already approved this evaluation
+  // Check for duplicate approval
   const existingApprovals = await db
-    .select()
-    .from(gateApprovals)
+    .select().from(gateApprovals)
     .where(eq(gateApprovals.evaluationId, params.id));
 
-  const alreadyApproved = existingApprovals.find((a) => a.userId === userId);
-  if (alreadyApproved) {
+  if (existingApprovals.find((a) => a.userId === userId)) {
     return NextResponse.json(
-      { error: "You have already submitted an approval decision for this gate." },
+      { error: "You have already submitted a decision for this gate." },
       { status: 409 }
     );
   }
@@ -125,60 +142,77 @@ export async function POST(
     rationale: rationale || null,
   }).returning();
 
-  // Check if we've reached required approvals
+  // Check threshold
   const allApprovals = [...existingApprovals, approval];
   const approveCount = allApprovals.filter((a) => a.decision === "approve").length;
   const rejectCount = allApprovals.filter((a) => a.decision === "reject").length;
 
-  // Get tolerance config
   const [tolerance] = await db
-    .select()
-    .from(gateTolerances)
-    .where(
-      and(
-        eq(gateTolerances.orgId, orgId),
-        eq(gateTolerances.gateCode, evaluation.gateCode)
-      )
-    )
-    .limit(1);
+    .select().from(gateTolerances)
+    .where(and(
+      eq(gateTolerances.orgId, orgId),
+      eq(gateTolerances.gateCode, evaluation.gateCode)
+    )).limit(1);
 
   const requiredApprovals = tolerance?.requiredApprovals || 2;
 
-  // Auto-update gate status if threshold met
+  // ── Determine gate outcome ────────────────────────────────
   let newStatus = evaluation.gateStatus;
+  let crystallized = false;
+
   if (rejectCount > 0) {
     newStatus = "failed";
   } else if (approveCount >= requiredApprovals) {
     newStatus = "passed";
-  }
 
-  if (newStatus !== evaluation.gateStatus) {
-    await db.update(gateEvaluations)
-      .set({ gateStatus: newStatus, evaluatedAt: new Date() })
-      .where(eq(gateEvaluations.id, params.id));
-
-    // If passed, update target's current gate to next gate
-    if (newStatus === "passed" && evaluation.targetId) {
-      const gateNum = parseInt(evaluation.gateCode.replace("G", ""));
-      const [target] = await db.select().from(targets).where(eq(targets.id, evaluation.targetId));
-      if (target && gateNum >= (target.currentGate || 0)) {
-        const updates: any = {
-          currentGate: gateNum + 1,
-          updatedAt: new Date(),
-        };
-        // Status transitions
-        if (gateNum === 0 && target.status === "new") updates.status = "inflight";
-        if (gateNum === 7) {
-          updates.status = "closed";
-          const score = evaluation.compositeScore ? Number(evaluation.compositeScore) : 0;
-          updates.outcome = score >= 65 ? "pursue" : score >= 50 ? "conditional" : "pass";
-        }
-        await db.update(targets).set(updates).where(eq(targets.id, evaluation.targetId));
-      }
+    // ═══════════════════════════════════════════════════════
+    // CRYSTALLIZE: Gate has passed dual auth
+    // Freeze the entire methodology config for this gate
+    // ═══════════════════════════════════════════════════════
+    try {
+      await crystallizeGate(params.id, userId);
+      crystallized = true;
+    } catch (err) {
+      // Crystallization failed — gate still passes but methodology
+      // isn't frozen. Log the error but don't block the approval.
+      console.error("Crystallization failed:", err);
+      // Still update status to passed
+      await db.update(gateEvaluations)
+        .set({ gateStatus: "passed", evaluatedAt: new Date() })
+        .where(eq(gateEvaluations.id, params.id));
     }
   }
 
-  // Audit log
+  // If gate passed (and crystallization handled status), handle target progression
+  if (newStatus !== evaluation.gateStatus && !crystallized) {
+    await db.update(gateEvaluations)
+      .set({ gateStatus: newStatus, evaluatedAt: new Date() })
+      .where(eq(gateEvaluations.id, params.id));
+  }
+
+  // ── Target status transitions on gate passage ─────────────
+  if (newStatus === "passed" && evaluation.targetId) {
+    const gateNum = parseInt(evaluation.gateCode.replace("G", ""));
+    const [target] = await db.select().from(targets).where(eq(targets.id, evaluation.targetId));
+
+    if (target && gateNum >= (target.currentGate || 0)) {
+      const updates: any = {
+        currentGate: gateNum + 1,
+        updatedAt: new Date(),
+      };
+
+      if (gateNum === 0 && target.status === "new") updates.status = "inflight";
+      if (gateNum === 7) {
+        updates.status = "closed";
+        const score = evaluation.compositeScore ? Number(evaluation.compositeScore) : 0;
+        updates.outcome = score >= 65 ? "pursue" : score >= 50 ? "conditional" : "pass";
+      }
+
+      await db.update(targets).set(updates).where(eq(targets.id, evaluation.targetId));
+    }
+  }
+
+  // ── Audit ─────────────────────────────────────────────────
   const [target] = evaluation.targetId
     ? await db.select().from(targets).where(eq(targets.id, evaluation.targetId))
     : [null];
@@ -196,6 +230,8 @@ export async function POST(
       approveCount,
       requiredApprovals,
       resultingStatus: newStatus,
+      crystallized,
+      moduleName: (evaluation as any).moduleName || null,
     },
   });
 
@@ -205,5 +241,52 @@ export async function POST(
     approveCount,
     requiredApprovals,
     canAdvance: approveCount >= requiredApprovals && rejectCount === 0,
+    crystallized,
   }, { status: 201 });
+}
+
+// ── DELETE: Break crystal (admin only) ────────────────────────
+// Unfreezes a crystallized gate for re-evaluation.
+// Requires admin role + justification.
+// Deletes existing approvals — gate needs fresh dual auth.
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const role = (session.user as any).role;
+  if (!hasPermission(role, "approve_gate")) {
+    return NextResponse.json(
+      { error: "Only admins can break gate crystallization" },
+      { status: 403 }
+    );
+  }
+
+  const userId = (session.user as any).id;
+  const orgId = (session.user as any).orgId;
+  const body = await req.json();
+  const { justification } = body;
+
+  if (!justification || justification.trim().length < 20) {
+    return NextResponse.json(
+      { error: "Justification required (minimum 20 characters). Explain why this gate needs re-evaluation." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    await breakCrystal(params.id, userId, orgId, justification);
+
+    return NextResponse.json({
+      success: true,
+      message: "Crystal broken. Gate reset to in_progress. Fresh dual authorization required.",
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err.message || "Failed to break crystal" },
+      { status: 400 }
+    );
+  }
 }

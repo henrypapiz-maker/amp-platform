@@ -33,6 +33,8 @@ import {
 import { GATES, type GateDefinition } from "@/lib/gates";
 import { hasPermission } from "@/lib/permissions";
 import { HelpTip, TabHelp } from "@/components/ui/help-tip";
+import ModuleSelection from "@/components/evaluation/ModuleSelection";
+import { GateStatusBar } from "@/components/evaluation/CrystallizationUI";
 
 // ── Types ──────────────────────────────────────────────────────
 type DimScore = {
@@ -109,6 +111,8 @@ export default function TargetDetailPage() {
   const [evidenceDialogOpen, setEvidenceDialogOpen] = useState(false);
   const [evidenceArtifactId, setEvidenceArtifactId] = useState("");
   const [evidenceArtifactLabel, setEvidenceArtifactLabel] = useState("");
+  // v2: module selection state
+  const [showModuleSelect, setShowModuleSelect] = useState<string | null>(null);
 
   const role = (session?.user as any)?.role;
   const canScore = hasPermission(role, "score_dimension");
@@ -137,7 +141,25 @@ export default function TargetDetailPage() {
     fetchWeights();
   }, [fetchTarget, fetchWeights]);
 
-  async function startEvaluation(gateCode: string) {
+  async function startEvaluation(gateCode: string, moduleId?: string) {
+    if (!moduleId) {
+      // v2: show module selection UI first
+      setShowModuleSelect(gateCode);
+      return;
+    }
+    const res = await fetch("/api/evaluations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetId: params.id, gateCode, moduleId }),
+    });
+    if (res.ok) {
+      setShowModuleSelect(null);
+      fetchTarget();
+    }
+  }
+
+  // v2: fallback for gates without modules — direct creation
+  async function startEvaluationDirect(gateCode: string) {
     const res = await fetch("/api/evaluations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -339,6 +361,21 @@ export default function TargetDetailPage() {
                 </div>
               </div>
 
+              {/* v2: Crystallization Status Bar */}
+              {currentEval && (
+                <GateStatusBar
+                  gateCode={currentEval.gateCode}
+                  gateStatus={currentEval.gateStatus}
+                  isCrystallized={(currentEval as any).isCrystallized || false}
+                  crystallizedAt={(currentEval as any).crystallizedAt}
+                  moduleName={(currentEval as any).moduleName}
+                  templateVersion={(currentEval as any).templateVersionSnapshot}
+                  canBreakCrystal={role === "admin"}
+                  evaluationId={currentEval.id}
+                  onCrystalBroken={() => fetchTarget()}
+                />
+              )}
+
               {/* Gate Rule */}
               <div className="bg-stone-900/50 rounded-lg p-3 mb-4 text-sm text-stone-300 flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
@@ -347,6 +384,18 @@ export default function TargetDetailPage() {
                   {currentGateDef.rule}
                 </div>
               </div>
+
+              {/* v2: Module Selection Dialog */}
+              {showModuleSelect === currentGateDef.code && (
+                <ModuleSelection
+                  gateCode={currentGateDef.code}
+                  gateName={currentGateDef.name}
+                  onSelect={async (moduleId: string) => {
+                    await startEvaluation(currentGateDef.code, moduleId);
+                  }}
+                  onCancel={() => setShowModuleSelect(null)}
+                />
+              )}
 
               {currentEval ? (
                 <Tabs defaultValue="dimensions" className="mt-4">

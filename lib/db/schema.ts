@@ -1,6 +1,6 @@
 import {
   pgTable, uuid, text, boolean, numeric,
-  timestamp, integer, jsonb, uniqueIndex
+  timestamp, integer, jsonb, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // ── Organizations ──────────────────────────────────────────────
@@ -36,6 +36,8 @@ export const personaConfig = pgTable("persona_config", {
   primarySectors: text("primary_sectors"),
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: uuid("updated_by").references(() => users.id),
+  // v2: methodology template selection
+  methodologyTemplateId: uuid("methodology_template_id"),
 });
 
 // ── Targets (Acquisition Candidates) ──────────────────────────
@@ -53,6 +55,8 @@ export const targets = pgTable("targets", {
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  // v2: deal-level methodology overrides
+  dealOverrideId: uuid("deal_override_id"),
 });
 
 // ── Gate Evaluations ──────────────────────────────────────────
@@ -66,6 +70,16 @@ export const gateEvaluations = pgTable("gate_evaluations", {
   evaluatedAt: timestamp("evaluated_at"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
+  // v2: module selection + crystallization
+  moduleId: uuid("module_id"),
+  moduleName: text("module_name"),
+  templateVersionSnapshot: text("template_version_snapshot"),
+  isCrystallized: boolean("is_crystallized").default(false),
+  crystallizedAt: timestamp("crystallized_at"),
+  crystallizedConfig: jsonb("crystallized_config"),
+  crystallizedBy: uuid("crystallized_by").references(() => users.id),
+  aiEnabled: boolean("ai_enabled").default(false),
+  aiBlanketConsent: boolean("ai_blanket_consent").default(false),
 });
 
 // ── Dimension Scores ──────────────────────────────────────────
@@ -82,6 +96,8 @@ export const dimensionScores = pgTable("dimension_scores", {
   aiGaps: jsonb("ai_gaps"),
   confirmedBy: uuid("confirmed_by").references(() => users.id),
   confirmedAt: timestamp("confirmed_at"),
+  // v2: AI request traceability
+  aiRequestId: uuid("ai_request_id"),
 });
 
 // ── Weight Overrides ──────────────────────────────────────────
@@ -191,6 +207,14 @@ export const aiSettings = pgTable("ai_settings", {
   dpaSignedAt: timestamp("dpa_signed_at"),
   enabledBy: uuid("enabled_by").references(() => users.id),
   enabledAt: timestamp("enabled_at"),
+  // v2: expanded AI settings
+  dpaDocumentUrl: text("dpa_document_url"),
+  dpaRenewalDate: timestamp("dpa_renewal_date"),
+  allowedModels: text("allowed_models").array(),
+  maxTokensPerRequest: integer("max_tokens_per_request").default(4096),
+  costBudgetMonthly: numeric("cost_budget_monthly", { precision: 10, scale: 2 }),
+  blanketEvaluationConsent: boolean("blanket_evaluation_consent").default(false),
+  blanketDocumentConsent: boolean("blanket_document_consent").default(false),
 });
 
 // ── AI Audit Log (separate for compliance) ────────────────────

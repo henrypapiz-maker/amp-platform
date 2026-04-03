@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { targets, auditLog } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { hasPermission } from "@/lib/permissions";
+import { withTargetLimit } from "@/lib/subscription";
 
 export async function GET() {
   const session = await auth();
@@ -19,7 +20,7 @@ export async function GET() {
   return NextResponse.json(rows);
 }
 
-export async function POST(req: NextRequest) {
+export const POST = withTargetLimit(async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -53,4 +54,4 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json(target, { status: 201 });
-}
+});
