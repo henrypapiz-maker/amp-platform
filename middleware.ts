@@ -38,6 +38,7 @@ export const config = {
     "/api/admin/:path*",
     "/api/audit/:path*",
     "/api/ai/:path*",
+    "/api/knowledge-base",
     "/api/knowledge-base/:path*",
     "/api/subscription/:path*",
   ],

@@ -6,9 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-  BookOpen, Search, ChevronRight, ArrowLeft, Layers,
+  BookOpen, Search, ChevronRight, ChevronDown, ArrowLeft, Layers,
   Target, Scale, Shield, Lightbulb, Eye, FileText,
-  Clock, User
+  Clock, User, GitBranch, Beaker, AlertTriangle
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -36,12 +36,28 @@ const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof BookOpen; co
 
 // ── Knowledge Base Page ────────────────────────────────────────
 
+// ── Methodology types for live rendering ──────────────────────
+interface MethodologyData {
+  templateId: string | null;
+  templateName: string | null;
+  templateVersion: string | null;
+  archetype: string | null;
+  isCustomized: boolean;
+  gates: any[];
+}
+
 export default function KnowledgeBasePage() {
   const [articles, setArticles] = useState<KBArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<KBArticle | null>(null);
+  // S3: Methodology Reference tab
+  const [activeTab, setActiveTab] = useState<"articles" | "methodology">("articles");
+  const [methodology, setMethodology] = useState<MethodologyData | null>(null);
+  const [methodologyLoading, setMethodologyLoading] = useState(false);
+  const [expandedGate, setExpandedGate] = useState<string | null>(null);
+  const [selectedModuleByGate, setSelectedModuleByGate] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetchArticles();
@@ -59,6 +75,26 @@ export default function KnowledgeBasePage() {
       setArticles(STATIC_ARTICLES);
     }
     setLoading(false);
+  }
+
+  async function fetchMethodology() {
+    if (methodology) return; // Already loaded
+    setMethodologyLoading(true);
+    try {
+      const res = await fetch("/api/knowledge-base/methodology");
+      if (res.ok) {
+        const data = await res.json();
+        setMethodology(data);
+      }
+    } catch {
+      // Methodology not available
+    }
+    setMethodologyLoading(false);
+  }
+
+  function handleTabSwitch(tab: "articles" | "methodology") {
+    setActiveTab(tab);
+    if (tab === "methodology") fetchMethodology();
   }
 
   // Filter
@@ -178,6 +214,252 @@ export default function KnowledgeBasePage() {
         </div>
       </div>
 
+      {/* Tab Switcher: Articles | Methodology Reference */}
+      <div className="flex gap-1 mb-6 p-1 bg-stone-800 rounded-lg w-fit">
+        <button
+          onClick={() => handleTabSwitch("articles")}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === "articles"
+              ? "bg-stone-700 text-white"
+              : "text-stone-400 hover:text-white"
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          Articles
+        </button>
+        <button
+          onClick={() => handleTabSwitch("methodology")}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === "methodology"
+              ? "bg-stone-700 text-white"
+              : "text-stone-400 hover:text-white"
+          }`}
+        >
+          <GitBranch className="w-4 h-4" />
+          Methodology Reference
+        </button>
+      </div>
+
+      {/* ── Methodology Reference Tab ───────────────────────── */}
+      {activeTab === "methodology" && (
+        <div>
+          {methodologyLoading ? (
+            <div className="text-stone-500 text-center py-12">Loading methodology...</div>
+          ) : !methodology ? (
+            <div className="text-stone-500 text-center py-12">
+              No methodology template configured. Complete onboarding to select an archetype.
+            </div>
+          ) : (
+            <div>
+              {/* Template Header */}
+              <div className="p-4 rounded-lg border border-stone-700 bg-stone-800/50 mb-6">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-serif text-white">{methodology.templateName}</h2>
+                  <Badge variant="outline" className="border-amber-600/50 text-amber-400 text-[10px]">
+                    {methodology.archetype?.replace(/_/g, " ")}
+                  </Badge>
+                  <Badge variant="outline" className="border-stone-600 text-stone-500 text-[10px]">
+                    v{methodology.templateVersion}
+                  </Badge>
+                  {methodology.isCustomized && (
+                    <Badge className="bg-blue-900/30 text-blue-400 text-[10px]">Customized</Badge>
+                  )}
+                </div>
+                <p className="text-stone-400 text-sm mt-1">
+                  {methodology.gates.length}-gate waterfall methodology. Click any gate to explore dimensions, rubric anchors, modules, and evaluation lenses.
+                </p>
+              </div>
+
+              {/* Gates Accordion */}
+              <div className="space-y-2">
+                {methodology.gates.map((gate: any) => {
+                  const isExpanded = expandedGate === gate.code;
+                  const modules = gate.modules || [];
+                  const activeModuleIdx = selectedModuleByGate[gate.code] || 0;
+                  const activeModule = modules[activeModuleIdx];
+                  const dimensions = activeModule?.dimensions || gate.dimensions || [];
+
+                  return (
+                    <div key={gate.code} className="border border-stone-700 rounded-lg overflow-hidden">
+                      {/* Gate Header */}
+                      <button
+                        onClick={() => setExpandedGate(isExpanded ? null : gate.code)}
+                        className="w-full flex items-center justify-between p-4 bg-stone-800/50 hover:bg-stone-800 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-amber-400 text-sm font-bold w-7">{gate.code}</span>
+                          <span className="text-white font-medium text-sm">{gate.name}</span>
+                          <Badge variant="outline" className="border-stone-600 text-stone-500 text-[10px]">
+                            {gate.type}
+                          </Badge>
+                          {gate.minimumScore && (
+                            <span className="text-stone-500 text-[10px]">
+                              min: {gate.minimumScore}
+                            </span>
+                          )}
+                          {modules.length > 1 && (
+                            <Badge className="bg-purple-900/30 text-purple-400 text-[10px]">
+                              {modules.length} modules
+                            </Badge>
+                          )}
+                        </div>
+                        {isExpanded ? (
+                          <ChevronDown className="w-4 h-4 text-stone-500" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-stone-500" />
+                        )}
+                      </button>
+
+                      {/* Expanded Gate Content */}
+                      {isExpanded && (
+                        <div className="p-4 border-t border-stone-700/50 space-y-4">
+                          {/* Purpose & Rule */}
+                          <div className="space-y-2">
+                            <p className="text-stone-300 text-sm">{gate.purpose}</p>
+                            <div className="bg-stone-900/50 rounded p-2 text-xs text-stone-400 flex items-start gap-2">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                              <span><strong className="text-stone-300">Gate Rule:</strong> {gate.rule}</span>
+                            </div>
+                          </div>
+
+                          {/* Module Tabs (if multiple) */}
+                          {modules.length > 1 && (
+                            <div className="flex gap-1 p-1 bg-stone-900 rounded-lg w-fit">
+                              {modules.map((mod: any, idx: number) => (
+                                <button
+                                  key={mod.id || idx}
+                                  onClick={() => setSelectedModuleByGate({ ...selectedModuleByGate, [gate.code]: idx })}
+                                  className={`px-3 py-1.5 rounded text-xs transition-colors ${
+                                    activeModuleIdx === idx
+                                      ? "bg-stone-700 text-white"
+                                      : "text-stone-500 hover:text-white"
+                                  }`}
+                                >
+                                  <Beaker className="w-3 h-3 inline mr-1" />
+                                  {mod.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Module description */}
+                          {activeModule?.description && (
+                            <p className="text-stone-400 text-xs italic">{activeModule.description}</p>
+                          )}
+
+                          {/* Dimensions */}
+                          <div className="space-y-3">
+                            <h4 className="text-stone-300 text-xs uppercase tracking-wider font-medium">
+                              Dimensions ({dimensions.length})
+                            </h4>
+                            {dimensions.map((dim: any, dIdx: number) => (
+                              <div key={dIdx} className="bg-stone-900 rounded-lg p-3 border border-stone-700/50">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-white text-sm font-medium">{dim.name}</span>
+                                  <Badge variant="outline" className="border-stone-600 text-stone-500 text-[10px]">
+                                    {dim.weight}%
+                                  </Badge>
+                                </div>
+
+                                {/* Test Guidance */}
+                                {dim.testGuidance && (
+                                  <p className="text-stone-400 text-xs leading-relaxed mb-2">{dim.testGuidance}</p>
+                                )}
+
+                                {/* Rubric Anchors */}
+                                {dim.rubric && dim.rubric.length > 0 && (
+                                  <div className="space-y-1 mt-2">
+                                    <span className="text-stone-500 text-[10px] uppercase tracking-wider">Rubric Anchors</span>
+                                    {dim.rubric.map((anchor: any, aIdx: number) => (
+                                      <div key={aIdx} className="flex items-start gap-2 text-xs">
+                                        <span className="font-mono text-stone-500 w-5 shrink-0 font-bold">{anchor.score}</span>
+                                        <span className="text-stone-400">{anchor.label}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Lenses for this dimension */}
+                                {dim.lenses && dim.lenses.length > 0 && (
+                                  <div className="mt-3 pt-2 border-t border-stone-700/30">
+                                    <span className="text-stone-500 text-[10px] uppercase tracking-wider flex items-center gap-1">
+                                      <Eye className="w-3 h-3" />
+                                      Evaluation Lenses ({dim.lenses.length})
+                                    </span>
+                                    <div className="mt-1.5 space-y-2">
+                                      {dim.lenses.map((lens: any, lIdx: number) => (
+                                        <div key={lIdx} className="bg-stone-800/50 rounded p-2 border border-stone-700/30">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-stone-200 text-xs font-medium">{lens.name}</span>
+                                            {lens.framework && (
+                                              <span className="text-stone-500 text-[10px]">({lens.framework})</span>
+                                            )}
+                                          </div>
+                                          {lens.guidance && (
+                                            <p className="text-stone-400 text-[11px] leading-relaxed">{lens.guidance}</p>
+                                          )}
+                                          {lens.keyQuestions && lens.keyQuestions.length > 0 && (
+                                            <div className="mt-1.5">
+                                              <span className="text-stone-500 text-[10px]">Key Questions:</span>
+                                              <ul className="mt-0.5">
+                                                {lens.keyQuestions.map((q: string, qIdx: number) => (
+                                                  <li key={qIdx} className="text-stone-400 text-[10px] ml-3 flex items-start gap-1">
+                                                    <span className="text-stone-600">•</span>{q}
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          )}
+                                          {lens.blindSpots && lens.blindSpots.length > 0 && (
+                                            <div className="mt-1.5">
+                                              <span className="text-amber-500/70 text-[10px] flex items-center gap-1">
+                                                <AlertTriangle className="w-2.5 h-2.5" /> Blind Spots
+                                              </span>
+                                              <ul className="mt-0.5">
+                                                {lens.blindSpots.map((b: string, bIdx: number) => (
+                                                  <li key={bIdx} className="text-stone-500 text-[10px] ml-3">• {b}</li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Evidence Artifacts */}
+                          {gate.evidenceArtifacts && gate.evidenceArtifacts.length > 0 && (
+                            <div>
+                              <h4 className="text-stone-300 text-xs uppercase tracking-wider font-medium mb-2">
+                                Evidence Artifacts
+                              </h4>
+                              <div className="flex flex-wrap gap-2">
+                                {gate.evidenceArtifacts.map((artifact: any, eIdx: number) => (
+                                  <Badge key={eIdx} variant="outline" className="border-stone-600 text-stone-500 text-[10px]">
+                                    <FileText className="w-3 h-3 mr-1" />
+                                    {artifact.label || artifact.id || artifact}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Articles Tab ────────────────────────────────────── */}
+      {activeTab === "articles" && <>
       {/* Search + Category Filters */}
       <div className="flex items-center gap-3 mb-6">
         <div className="relative flex-1 max-w-sm">
@@ -278,6 +560,7 @@ export default function KnowledgeBasePage() {
           })}
         </div>
       )}
+      </>}
     </div>
   );
 }

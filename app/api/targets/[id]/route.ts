@@ -68,6 +68,10 @@ export async function PATCH(
   if (body.currentGate !== undefined) updateData.currentGate = body.currentGate;
   if (body.compositeScore !== undefined) updateData.compositeScore = body.compositeScore;
   if (body.outcome !== undefined) updateData.outcome = body.outcome;
+  // FIX-5: Deal-level persona overrides
+  if (body.personaOverrides !== undefined) updateData.personaOverrides = body.personaOverrides;
+  // FIX-6: Custom dimensions per deal
+  if (body.customDimensions !== undefined) updateData.customDimensions = body.customDimensions;
 
   const [updated] = await db
     .update(targets)

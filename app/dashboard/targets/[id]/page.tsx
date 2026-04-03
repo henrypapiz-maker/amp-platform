@@ -116,6 +116,12 @@ export default function TargetDetailPage() {
   const [showModuleSelect, setShowModuleSelect] = useState<string | null>(null);
   // FIX-1: Track whether initial gate has been set to prevent auto-redirect on data refresh
   const initialGateSet = useRef(false);
+  // FIX-6: Custom dimensions per deal
+  const [showAddDimension, setShowAddDimension] = useState(false);
+  const [customDimName, setCustomDimName] = useState("");
+  const [customDimMode, setCustomDimMode] = useState<"weighted" | "supplementary">("supplementary");
+  const [customDimWeight, setCustomDimWeight] = useState(10);
+  const [customDimGuidance, setCustomDimGuidance] = useState("");
 
   const role = (session?.user as any)?.role;
   const canScore = hasPermission(role, "score_dimension");
@@ -219,6 +225,46 @@ export default function TargetDetailPage() {
       body: JSON.stringify({ _updateStatus: status }),
     });
     await fetchTarget();
+  }
+
+  // FIX-6: Save a custom dimension for the current gate
+  async function addCustomDimension() {
+    if (!customDimName.trim() || !activeGate) return;
+    const existing = (target as any)?.customDimensions || {};
+    const gateDims = existing[activeGate] || [];
+    const updated = {
+      ...existing,
+      [activeGate]: [
+        ...gateDims,
+        {
+          name: customDimName.trim(),
+          weight: customDimMode === "weighted" ? customDimWeight : 0,
+          mode: customDimMode,
+          testGuidance: customDimGuidance || null,
+          rubric: [
+            { score: 0, label: "Critical concern / no evidence" },
+            { score: 3, label: "Below expectations with significant gaps" },
+            { score: 5, label: "Meets minimum threshold" },
+            { score: 7, label: "Above expectations with strong evidence" },
+            { score: 10, label: "Exceptional — best-in-class" },
+          ],
+        },
+      ],
+    };
+    const res = await fetch(`/api/targets/${params.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customDimensions: updated }),
+    });
+    if (res.ok) {
+      toast.success(`Custom dimension added — ${customDimName}`);
+      setCustomDimName("");
+      setCustomDimGuidance("");
+      setShowAddDimension(false);
+      fetchTarget();
+    } else {
+      toast.error("Failed to add custom dimension");
+    }
   }
 
   if (loading) return <div className="text-stone-400 text-center py-12">Loading target...</div>;
@@ -468,6 +514,121 @@ export default function TargetDetailPage() {
                         />
                       );
                     })}
+
+                    {/* FIX-6: Custom Dimensions for this deal */}
+                    {(() => {
+                      const customDims = (target as any)?.customDimensions?.[activeGate] || [];
+                      return customDims.map((cdim: any, idx: number) => {
+                        const dimScore = currentEval.scores.find((s) => s.dimensionName === cdim.name);
+                        return (
+                          <DimensionCard
+                            key={`custom-${idx}`}
+                            dimension={{
+                              name: cdim.name,
+                              weight: cdim.weight || 0,
+                              rubric: cdim.rubric || [],
+                              testGuidance: cdim.testGuidance || "",
+                              acceptanceParams: [],
+                            }}
+                            score={dimScore}
+                            weight={undefined}
+                            evaluationId={currentEval.id}
+                            gateType={currentGateDef.type}
+                            canScore={canScore}
+                            onSave={saveScore}
+                            saving={saving}
+                          />
+                        );
+                      });
+                    })()}
+
+                    {/* Add Custom Dimension button */}
+                    {canScore && (
+                      <div>
+                        {!showAddDimension ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowAddDimension(true)}
+                            className="border-dashed border-stone-600 text-stone-400 hover:text-white hover:border-stone-500 w-full"
+                          >
+                            <Plus className="w-4 h-4 mr-1.5" />
+                            Add Custom Dimension
+                          </Button>
+                        ) : (
+                          <div className="bg-stone-900 rounded-lg border border-amber-700/30 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-white text-sm font-medium">New Custom Dimension</span>
+                              <Badge className="bg-amber-900/30 text-amber-400 text-[10px]">Custom</Badge>
+                            </div>
+                            <div>
+                              <Label className="text-stone-400 text-xs">Dimension Name</Label>
+                              <Input
+                                value={customDimName}
+                                onChange={(e) => setCustomDimName(e.target.value)}
+                                placeholder="e.g., OEPA Permit Transferability"
+                                className="bg-stone-800 border-stone-600 text-white text-sm mt-1"
+                              />
+                            </div>
+                            <div className="flex gap-3">
+                              <div className="flex-1">
+                                <Label className="text-stone-400 text-xs">Scoring Mode</Label>
+                                <Select value={customDimMode} onValueChange={(v: any) => setCustomDimMode(v)}>
+                                  <SelectTrigger className="bg-stone-800 border-stone-600 text-white text-sm mt-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-stone-800 border-stone-700">
+                                    <SelectItem value="supplementary">Supplementary (no composite impact)</SelectItem>
+                                    <SelectItem value="weighted">Weighted (factors into composite)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {customDimMode === "weighted" && (
+                                <div className="w-24">
+                                  <Label className="text-stone-400 text-xs">Weight %</Label>
+                                  <Input
+                                    type="number"
+                                    min={5}
+                                    max={30}
+                                    value={customDimWeight}
+                                    onChange={(e) => setCustomDimWeight(Number(e.target.value))}
+                                    className="bg-stone-800 border-stone-600 text-white text-sm mt-1"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <Label className="text-stone-400 text-xs">Test Guidance (optional)</Label>
+                              <Textarea
+                                value={customDimGuidance}
+                                onChange={(e) => setCustomDimGuidance(e.target.value)}
+                                placeholder="How should this dimension be evaluated?"
+                                className="bg-stone-800 border-stone-600 text-white text-sm mt-1"
+                                rows={2}
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={addCustomDimension}
+                                disabled={!customDimName.trim()}
+                                className="bg-amber-600 hover:bg-amber-700 text-sm"
+                              >
+                                Add Dimension
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => { setShowAddDimension(false); setCustomDimName(""); }}
+                                className="text-stone-400 text-sm"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Composite Score + Gate Actions */}
                     <GateScorePanel
