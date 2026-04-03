@@ -92,12 +92,14 @@ export async function POST(req: NextRequest) {
     evaluatedBy: userId,
   };
 
-  // Add v2 fields if module was resolved
+  // Always snapshot template version at eval creation
+  evalValues.templateVersionSnapshot = templateVersionSnapshot;
+  evalValues.isCrystallized = false;
+
+  // Add v2 module fields if module was resolved
   if (evaluationModuleId) {
     evalValues.moduleId = evaluationModuleId;
     evalValues.moduleName = evaluationModuleName;
-    evalValues.templateVersionSnapshot = templateVersionSnapshot;
-    evalValues.isCrystallized = false;
   }
 
   const [evaluation] = await db

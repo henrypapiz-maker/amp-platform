@@ -16,6 +16,15 @@ import * as v2 from "./schema-v2";
 import { GATES } from "@/lib/gates";
 import { PE_PLATFORM_LENSES } from "@/lib/lenses/pe-platform-lenses";
 import { G4_MODULES } from "@/lib/modules/g4-modules";
+// S4: Import 4 new templates + lenses
+import { PE_BOLT_ON_TEMPLATE } from "@/lib/templates/pe-bolt-on-template";
+import { CORPORATE_STRATEGIC_TEMPLATE } from "@/lib/templates/corporate-strategic-template";
+import { FAMILY_OFFICE_TEMPLATE } from "@/lib/templates/family-office-template";
+import { GROWTH_EQUITY_TEMPLATE } from "@/lib/templates/growth-equity-template";
+import { BOLT_ON_LENSES } from "@/lib/lenses/bolt-on-lenses";
+import { CORPORATE_STRATEGIC_LENSES } from "@/lib/lenses/corporate-strategic-lenses";
+import { FAMILY_OFFICE_LENSES } from "@/lib/lenses/family-office-lenses";
+import { GROWTH_EQUITY_LENSES } from "@/lib/lenses/growth-equity-lenses";
 
 const sql = neon(process.env.DATABASE_URL!);
 const db = drizzle(sql, { schema: { ...schema, ...v2 } });
@@ -182,6 +191,76 @@ async function seedV2() {
 
   console.log(`  \u2705 Org linked to PE Platform Build template`);
 
+  // ── 5b. Seed 4 Additional Templates ─────────────────────
+  const additionalTemplates = [
+    { config: PE_BOLT_ON_TEMPLATE, lenses: BOLT_ON_LENSES },
+    { config: CORPORATE_STRATEGIC_TEMPLATE, lenses: CORPORATE_STRATEGIC_LENSES },
+    { config: FAMILY_OFFICE_TEMPLATE, lenses: FAMILY_OFFICE_LENSES },
+    { config: GROWTH_EQUITY_TEMPLATE, lenses: GROWTH_EQUITY_LENSES },
+  ];
+
+  for (const { config, lenses } of additionalTemplates) {
+    console.log(`\n  Creating ${config.name} template...`);
+
+    const [tmpl] = await db.insert(v2.methodologyTemplates).values({
+      name: config.name,
+      slug: config.slug,
+      archetype: config.archetype,
+      description: config.description,
+      version: config.version,
+      gatesConfig: config.gatesConfig,
+      personaSchema: config.personaSchema,
+      weightPropagationRules: config.weightPropagationRules,
+      isPublished: config.isPublished,
+      isDefault: false,
+      publishedAt: new Date(),
+      authoredBy: config.authoredBy,
+      changeLog: config.changeLog,
+    }).returning();
+
+    console.log(`  \u2705 Template: ${tmpl.name} (${tmpl.id})`);
+
+    // Create default modules for each gate
+    for (const gate of config.gatesConfig as any[]) {
+      await db.insert(v2.evaluationModules).values({
+        templateId: tmpl.id,
+        gateCode: gate.code,
+        name: `${gate.name} — Standard`,
+        slug: `${config.slug}-${gate.code.toLowerCase()}-standard`,
+        description: gate.purpose,
+        whenToUse: `Default evaluation framework for ${gate.name}.`,
+        dimensionsConfig: gate.dimensions,
+        evidenceArtifacts: gate.evidenceArtifacts,
+        minimumScore: gate.minimumScore?.toString() || null,
+        declineThreshold: gate.declineThreshold?.toString() || null,
+        isDefault: true,
+        source: "alio_foundry",
+        authorName: "Alio Foundry",
+      });
+    }
+    console.log(`  \u2705 ${(config.gatesConfig as any[]).length} default modules created`);
+
+    // Seed template-specific lenses
+    for (const lens of lenses) {
+      await db.insert(v2.evaluationLenses).values({
+        gateCode: lens.gateCode,
+        dimensionName: lens.dimensionName,
+        name: lens.name,
+        framework: lens.framework,
+        guidance: lens.guidance,
+        keyQuestions: lens.keyQuestions,
+        evidenceNeeds: lens.evidenceNeeds,
+        calibrationAnchors: lens.calibrationAnchors,
+        blindSpots: lens.blindSpots,
+        templateId: tmpl.id,
+        isDefault: lens.isDefault,
+        source: "alio_foundry",
+        authorName: "Alio Foundry",
+      });
+    }
+    console.log(`  \u2705 ${lenses.length} lenses created`);
+  }
+
   // ── 6. Create Subscription (Free Tier) ──────────────────
   console.log("\n  Creating subscription record...");
 
@@ -248,11 +327,12 @@ async function seedV2() {
   }
 
   // ── Summary ─────────────────────────────────────────────
+  const totalLenses = PE_PLATFORM_LENSES.length + BOLT_ON_LENSES.length + CORPORATE_STRATEGIC_LENSES.length + FAMILY_OFFICE_LENSES.length + GROWTH_EQUITY_LENSES.length;
   console.log("\n\u2705 v2 Seed complete!");
-  console.log("  \u2022 1 methodology template (PE Platform Build)");
-  console.log("  \u2022 10 evaluation modules (3 specialized G4 + 7 default gates)");
-  console.log(`  \u2022 ${PE_PLATFORM_LENSES.length} evaluation lenses`);
-  console.log("  \u2022 1 org methodology linkage");
+  console.log("  \u2022 5 methodology templates (PE Platform, Bolt-On, Corporate, Family Office, Growth Equity)");
+  console.log("  \u2022 10 PE Platform modules + default modules for 4 additional templates");
+  console.log(`  \u2022 ${totalLenses} evaluation lenses across all templates`);
+  console.log("  \u2022 1 org methodology linkage (PE Platform Build)");
   console.log("  \u2022 1 subscription record (Team tier)");
   console.log("  \u2022 4 Knowledge Base articles");
   console.log("\n  Ready to test the v2 evaluation flow!\n");

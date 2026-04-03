@@ -91,6 +91,32 @@ const PERSONA_QUESTIONS: Record<string, Array<{
     { key: "primarySectors", label: "Target Industries", type: "text", placeholder: "e.g., B2B Services, Light Manufacturing", help: "Industries you're searching in" },
     { key: "irrHurdle", label: "Min Cash-on-Cash Target (%)", type: "number", placeholder: "25", help: "Target annual cash-on-cash return by year 3" },
   ],
+  pe_bolt_on: [
+    { key: "platformCompanyName", label: "Platform Company Name", type: "text", placeholder: "e.g., Apex Industrial Group", help: "The platform company making bolt-on acquisitions" },
+    { key: "synergyThesis", label: "Synergy Thesis", type: "select", options: ["Sector Consolidation", "Customer Consolidation", "Service Layering"], help: "Primary synergy strategy for bolt-ons" },
+    { key: "integrationPhilosophy", label: "Integration Philosophy", type: "select", options: ["Full Integration", "Standalone", "Phased"], help: "How bolt-ons are integrated into the platform" },
+    { key: "targetBoltOnCount", label: "Target # of Bolt-Ons (1-5)", type: "number", placeholder: "3", help: "How many bolt-ons does the platform plan to make?" },
+    { key: "maxMultiple", label: "Max Entry Multiple", type: "text", placeholder: "e.g., 7x EBITDA", help: "Maximum acquisition multiple for bolt-ons" },
+  ],
+  corporate: [
+    { key: "strategicJustification", label: "Strategic Rationale", type: "select", options: ["Vertical Integration", "Horizontal Expansion", "Adjacent Market", "Competitive Threat Denial"], help: "Primary strategic driver for this acquisition" },
+    { key: "coreBusinessRelevance", label: "Core Business Relevance (1-5)", type: "number", placeholder: "4", help: "1=Tangential, 5=Core to strategy" },
+    { key: "integrationComplexity", label: "Expected Integration Complexity", type: "select", options: ["Simple", "Moderate", "Complex"], help: "Anticipated integration difficulty" },
+    { key: "regulatoryEnvironment", label: "Regulatory Scrutiny Level", type: "select", options: ["Low", "Moderate", "High"], help: "Expected level of regulatory review" },
+  ],
+  family_office: [
+    { key: "holdingPeriod", label: "Expected Hold Period", type: "select", options: ["10-20 years", "20+ years", "Perpetual"], help: "How long will the family hold this asset?" },
+    { key: "riskTolerance", label: "Risk Tolerance", type: "select", options: ["Very Conservative", "Conservative", "Moderate"], help: "Family's appetite for investment risk" },
+    { key: "dividendExpectation", label: "Dividend / Distribution Needs", type: "select", options: ["Minimal (reinvest)", "Moderate (20%+)", "High (30%+)"], help: "Required annual cash distribution from this investment" },
+    { key: "managementExpectation", label: "Management Continuity", type: "select", options: ["Founder must stay", "Founder + rollover", "Successor acceptable"], help: "Expectation for post-acquisition management" },
+    { key: "governanceStructure", label: "Governance Structure", type: "select", options: ["Family board", "Professional board", "Advisory only"], help: "How will the family govern this business?" },
+  ],
+  growth_equity: [
+    { key: "investmentStage", label: "Target Company Stage", type: "select", options: ["Early Growth", "Scaling", "Late Growth / Pre-IPO"], help: "Stage of target companies you invest in" },
+    { key: "targetRevenueRange", label: "Target Revenue Range at Entry", type: "select", options: ["$5-20M", "$20-50M", "$50M+"], help: "Revenue range of target investments" },
+    { key: "growthHurdle", label: "Minimum Revenue Growth", type: "select", options: ["20%+", "30%+", "40%+"], help: "Minimum acceptable revenue growth rate" },
+    { key: "tamRequirement", label: "Minimum TAM Size", type: "select", options: ["$500M", "$1B", "$5B+"], help: "Minimum total addressable market" },
+  ],
   // Default questions for archetypes without specific configs
   default: [
     { key: "acquisitionThesis", label: "Acquisition Thesis", type: "select", options: ["Capability Buy", "Market Extension", "Revenue Synergy", "Cost Synergy", "Platform Build", "Talent Acquisition"], help: "Primary strategic rationale" },
