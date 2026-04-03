@@ -692,7 +692,20 @@ export default function TargetDetailPage() {
                                     <EvidenceTypeIcon type={ev.linkType} />
                                     <div className="flex-1 min-w-0">
                                       <p className="text-stone-300 truncate">{ev.label}</p>
-                                      <p className="text-stone-500 text-xs truncate">{ev.ref}</p>
+                                      {ev.linkType === "file" && ev.ref?.startsWith("http") ? (
+                                        <a
+                                          href={ev.ref}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-amber-400 hover:text-amber-300 text-xs truncate flex items-center gap-1"
+                                        >
+                                          <FileIcon className="w-3 h-3" />
+                                          {ev.ref.split("/").pop()?.split("-").slice(1).join("-") || ev.ref}
+                                          {ev.fileSize && <span className="text-stone-500 ml-1">({ev.fileSize})</span>}
+                                        </a>
+                                      ) : (
+                                        <p className="text-stone-500 text-xs truncate">{ev.ref}</p>
+                                      )}
                                       {ev.note && <p className="text-stone-500 text-xs mt-0.5 italic">{ev.note}</p>}
                                     </div>
                                     {canUploadEvidence && (
@@ -927,15 +940,73 @@ function EvidenceForm({
   artifactLabel: string;
   onSubmit: (evalId: string, artifactId: string, data: any) => void;
 }) {
-  const [linkType, setLinkType] = useState<string>("url");
+  const [linkType, setLinkType] = useState<string>("file");
   const [label, setLabel] = useState(artifactLabel);
   const [ref, setRef] = useState("");
   const [note, setNote] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; extension: string } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const ALLOWED_EXTENSIONS = ["pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "csv", "png", "jpg", "jpeg", "txt"];
+  const MAX_SIZE_MB = 25;
+
+  async function handleFileUpload(file: File) {
+    setUploadError(null);
+
+    // Client-side validation
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      setUploadError(`File type .${ext} not allowed. Use: ${ALLOWED_EXTENSIONS.join(", ")}`);
+      return;
+    }
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      setUploadError(`File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max: ${MAX_SIZE_MB}MB.`);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("evaluationId", evaluationId);
+
+      const res = await fetch("/api/evidence/upload", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json();
+        setUploadError(err.error || "Upload failed");
+        setUploading(false);
+        return;
+      }
+
+      const data = await res.json();
+      setRef(data.url);
+      setUploadedFile({ name: data.filename, size: data.sizeFormatted, extension: data.extension });
+      if (!label || label === artifactLabel) {
+        setLabel(file.name.replace(/\.[^.]+$/, ""));
+      }
+    } catch {
+      setUploadError("Upload failed. Please try again.");
+    }
+    setUploading(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileUpload(file);
+  }
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) handleFileUpload(file);
+  }
 
   const placeholders: Record<string, string> = {
     url: "https://docs.google.com/spreadsheets/d/...",
     db: "salesforce://opportunity/00123456",
-    file: "evidence/precision-dynamics/cim-2025.pdf",
     flatfile: "\\\\server\\deals\\PD\\financials.xlsx",
   };
 
@@ -943,14 +1014,14 @@ function EvidenceForm({
     <div className="space-y-3 mt-2">
       <div>
         <Label className="text-stone-300 text-xs">Attachment Type</Label>
-        <Select value={linkType} onValueChange={setLinkType}>
+        <Select value={linkType} onValueChange={(v) => { setLinkType(v); setRef(""); setUploadedFile(null); setUploadError(null); }}>
           <SelectTrigger className="bg-stone-900 border-stone-600 text-white mt-1 h-9">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="bg-stone-800 border-stone-700">
+            <SelectItem value="file" className="text-white">File Upload</SelectItem>
             <SelectItem value="url" className="text-white">URL / Link</SelectItem>
             <SelectItem value="db" className="text-white">Database Reference</SelectItem>
-            <SelectItem value="file" className="text-white">File Upload</SelectItem>
             <SelectItem value="flatfile" className="text-white">Network File Path</SelectItem>
           </SelectContent>
         </Select>
@@ -963,15 +1034,86 @@ function EvidenceForm({
           className="bg-stone-900 border-stone-600 text-white mt-1"
         />
       </div>
-      <div>
-        <Label className="text-stone-300 text-xs">Reference</Label>
-        <Input
-          value={ref}
-          onChange={(e) => setRef(e.target.value)}
-          placeholder={placeholders[linkType]}
-          className="bg-stone-900 border-stone-600 text-white mt-1"
-        />
-      </div>
+
+      {/* File Upload: Drag-and-drop zone */}
+      {linkType === "file" ? (
+        <div>
+          {!uploadedFile ? (
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer ${
+                dragOver
+                  ? "border-amber-500 bg-amber-900/10"
+                  : "border-stone-600 hover:border-stone-500 bg-stone-900/50"
+              }`}
+              onClick={() => document.getElementById(`file-input-${artifactId}`)?.click()}
+            >
+              <input
+                id={`file-input-${artifactId}`}
+                type="file"
+                className="hidden"
+                accept={ALLOWED_EXTENSIONS.map(e => `.${e}`).join(",")}
+                onChange={handleFileInput}
+              />
+              {uploading ? (
+                <div className="space-y-2">
+                  <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-stone-400 text-sm">Uploading...</p>
+                </div>
+              ) : (
+                <>
+                  <FileIcon className="w-8 h-8 text-stone-500 mx-auto mb-2" />
+                  <p className="text-stone-300 text-sm">Drop file here or click to browse</p>
+                  <p className="text-stone-500 text-[10px] mt-1">
+                    PDF, DOCX, XLSX, PPTX, CSV, PNG, JPG &middot; Max {MAX_SIZE_MB}MB
+                  </p>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="bg-stone-900 border border-stone-600 rounded-lg p-3 flex items-center gap-3">
+              <FileIcon className="w-5 h-5 text-green-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm truncate">{uploadedFile.name}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-stone-500 text-[10px]">{uploadedFile.size}</span>
+                  <Badge variant="outline" className="border-stone-600 text-stone-500 text-[10px] uppercase">
+                    {uploadedFile.extension}
+                  </Badge>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setUploadedFile(null); setRef(""); }}
+                className="text-stone-500 hover:text-red-400 shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          )}
+          {uploadError && (
+            <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              {uploadError}
+            </p>
+          )}
+        </div>
+      ) : (
+        /* URL / DB / Network Path: text input */
+        <div>
+          <Label className="text-stone-300 text-xs">Reference</Label>
+          <Input
+            value={ref}
+            onChange={(e) => setRef(e.target.value)}
+            placeholder={placeholders[linkType]}
+            className="bg-stone-900 border-stone-600 text-white mt-1"
+          />
+        </div>
+      )}
+
       <div>
         <Label className="text-stone-300 text-xs">Note (optional)</Label>
         <Textarea
@@ -984,10 +1126,17 @@ function EvidenceForm({
       </div>
       <Button
         className="w-full bg-amber-600 hover:bg-amber-700"
-        disabled={!ref || !label}
-        onClick={() => onSubmit(evaluationId, artifactId, { linkType, label, ref, note: note || undefined })}
+        disabled={!ref || !label || uploading}
+        onClick={() => onSubmit(evaluationId, artifactId, {
+          linkType,
+          label,
+          ref,
+          note: note || undefined,
+          fileSize: uploadedFile?.size,
+          extension: uploadedFile?.extension,
+        })}
       >
-        Attach Evidence
+        {uploading ? "Uploading..." : "Attach Evidence"}
       </Button>
     </div>
   );
