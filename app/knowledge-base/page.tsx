@@ -53,11 +53,16 @@ export default function KnowledgeBasePage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<KBArticle | null>(null);
   // S3: Methodology Reference tab
-  const [activeTab, setActiveTab] = useState<"articles" | "methodology">("articles");
+  const [activeTab, setActiveTab] = useState<"articles" | "methodology" | "references">("articles");
   const [methodology, setMethodology] = useState<MethodologyData | null>(null);
   const [methodologyLoading, setMethodologyLoading] = useState(false);
   const [expandedGate, setExpandedGate] = useState<string | null>(null);
   const [selectedModuleByGate, setSelectedModuleByGate] = useState<Record<string, number>>({});
+  // Reference Library
+  const [refTemplates, setRefTemplates] = useState<any[]>([]);
+  const [refLoading, setRefLoading] = useState(false);
+  const [refGateFilter, setRefGateFilter] = useState<string | null>(null);
+  const [expandedRef, setExpandedRef] = useState<string | null>(null);
 
   useEffect(() => {
     fetchArticles();
@@ -92,9 +97,20 @@ export default function KnowledgeBasePage() {
     setMethodologyLoading(false);
   }
 
-  function handleTabSwitch(tab: "articles" | "methodology") {
+  async function fetchRefTemplates() {
+    if (refTemplates.length > 0) return;
+    setRefLoading(true);
+    try {
+      const res = await fetch("/api/evidence/templates");
+      if (res.ok) setRefTemplates(await res.json());
+    } catch { /* ignore */ }
+    setRefLoading(false);
+  }
+
+  function handleTabSwitch(tab: "articles" | "methodology" | "references") {
     setActiveTab(tab);
     if (tab === "methodology") fetchMethodology();
+    if (tab === "references") fetchRefTemplates();
   }
 
   // Filter
@@ -237,6 +253,17 @@ export default function KnowledgeBasePage() {
         >
           <GitBranch className="w-4 h-4" />
           Methodology Reference
+        </button>
+        <button
+          onClick={() => handleTabSwitch("references")}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === "references"
+              ? "bg-stone-700 text-white"
+              : "text-stone-400 hover:text-white"
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          Reference Library
         </button>
       </div>
 
@@ -453,6 +480,149 @@ export default function KnowledgeBasePage() {
                   );
                 })}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Reference Library Tab ─────────────────────────── */}
+      {activeTab === "references" && (
+        <div>
+          <div className="p-4 rounded-lg border border-stone-700 bg-stone-800/50 mb-6">
+            <h2 className="text-lg font-serif text-white">Evidence Reference Library</h2>
+            <p className="text-stone-400 text-sm mt-1">
+              Sample templates, frameworks, and guides for each gate. Browse, download, customize for your deal, then upload as evidence.
+            </p>
+          </div>
+
+          {/* Gate filter pills */}
+          <div className="flex gap-1.5 flex-wrap mb-4">
+            <button
+              onClick={() => setRefGateFilter(null)}
+              className={`px-3 py-1.5 rounded-full text-xs transition-colors ${
+                !refGateFilter ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-400 hover:text-white"
+              }`}
+            >
+              All Gates
+            </button>
+            {["G0","G1","G2","G3","G4","G5","G6","G7"].map((g) => (
+              <button
+                key={g}
+                onClick={() => setRefGateFilter(refGateFilter === g ? null : g)}
+                className={`px-3 py-1.5 rounded-full text-xs transition-colors ${
+                  refGateFilter === g ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-400 hover:text-white"
+                }`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+
+          {refLoading ? (
+            <div className="text-stone-500 text-center py-12">Loading reference library...</div>
+          ) : refTemplates.length === 0 ? (
+            <div className="text-stone-500 text-center py-12">No reference templates available.</div>
+          ) : (
+            <div className="space-y-2">
+              {(refGateFilter ? refTemplates.filter((t: any) => t.gateCode === refGateFilter) : refTemplates)
+                .map((tmpl: any) => {
+                  const isExpanded = expandedRef === tmpl.id;
+                  const categoryColors: Record<string, string> = {
+                    template: "text-amber-400 border-amber-600/30",
+                    framework: "text-blue-400 border-blue-600/30",
+                    guide: "text-green-400 border-green-600/30",
+                    checklist: "text-teal-400 border-teal-600/30",
+                    model: "text-purple-400 border-purple-600/30",
+                  };
+                  const catStyle = categoryColors[tmpl.category] || "text-stone-400 border-stone-600";
+
+                  return (
+                    <div key={tmpl.id} className="border border-stone-700 rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => setExpandedRef(isExpanded ? null : tmpl.id)}
+                        className="w-full flex items-center justify-between p-4 bg-stone-800/50 hover:bg-stone-800 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-amber-400 text-xs font-bold w-7">{tmpl.gateCode}</span>
+                          <span className="text-white text-sm font-medium">{tmpl.name}</span>
+                          <Badge variant="outline" className={`text-[10px] capitalize ${catStyle}`}>
+                            {tmpl.category}
+                          </Badge>
+                          {tmpl.templateBlobUrl && (
+                            <Badge className="bg-green-900/30 text-green-400 text-[10px]">
+                              Download Available
+                            </Badge>
+                          )}
+                        </div>
+                        {isExpanded ? (
+                          <ChevronDown className="w-4 h-4 text-stone-500" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-stone-500" />
+                        )}
+                      </button>
+
+                      {isExpanded && (
+                        <div className="p-4 border-t border-stone-700/50 space-y-4">
+                          {/* Description */}
+                          <p className="text-stone-300 text-sm leading-relaxed">{tmpl.description}</p>
+
+                          {/* Sections / Outline */}
+                          {tmpl.sections && tmpl.sections.length > 0 && (
+                            <div>
+                              <h4 className="text-stone-300 text-xs uppercase tracking-wider font-medium mb-2">
+                                Recommended Sections
+                              </h4>
+                              <div className="space-y-2">
+                                {tmpl.sections.map((sec: any, idx: number) => (
+                                  <div key={idx} className="bg-stone-900 rounded p-3 border border-stone-700/50">
+                                    <span className="text-white text-sm font-medium">{sec.heading}</span>
+                                    <p className="text-stone-400 text-xs mt-1 leading-relaxed">{sec.guidance}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Quality Criteria */}
+                          {tmpl.qualityCriteria && (
+                            <div className="bg-amber-900/10 border border-amber-800/20 rounded-lg p-3">
+                              <span className="text-amber-400 text-xs uppercase tracking-wider font-medium flex items-center gap-1.5">
+                                <Target className="w-3 h-3" />
+                                Quality Criteria
+                              </span>
+                              <p className="text-stone-300 text-xs mt-1.5 leading-relaxed">{tmpl.qualityCriteria}</p>
+                            </div>
+                          )}
+
+                          {/* Download link (when template file exists) */}
+                          {tmpl.templateBlobUrl && (
+                            <a
+                              href={tmpl.templateBlobUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm transition-colors"
+                            >
+                              <FileText className="w-4 h-4" />
+                              Download Template
+                              {tmpl.fileType && <span className="text-amber-200 text-[10px] uppercase">({tmpl.fileType})</span>}
+                            </a>
+                          )}
+
+                          {/* Tags */}
+                          {tmpl.tags && tmpl.tags.length > 0 && (
+                            <div className="flex gap-1.5 flex-wrap">
+                              {tmpl.tags.map((tag: string, idx: number) => (
+                                <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-stone-700 text-stone-500">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
             </div>
           )}
         </div>

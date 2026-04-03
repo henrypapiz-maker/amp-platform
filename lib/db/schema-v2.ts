@@ -244,3 +244,32 @@ export const knowledgeBaseArticles = pgTable("knowledge_base_articles", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// ── Evidence Reference Library ───────────────────────────────
+// Standalone reference catalog of sample templates, guides, and
+// frameworks organized by gate. Users browse, download, customize,
+// then upload their version as deal evidence separately.
+export const evidenceTemplates = pgTable("evidence_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  gateCode: text("gate_code").notNull(),
+  artifactId: text("artifact_id").notNull(),
+  name: text("name").notNull(),
+  category: text("category").default("template"),
+  description: text("description"),
+  sections: jsonb("sections"),
+  qualityCriteria: text("quality_criteria"),
+  templateBlobUrl: text("template_blob_url"),
+  fileName: text("file_name"),
+  fileType: text("file_type"),
+  fileSize: text("file_size"),
+  templateId: uuid("template_id").references(() => methodologyTemplates.id),
+  isPublished: boolean("is_published").default(true),
+  authorName: text("author_name"),
+  tags: jsonb("tags"),
+  version: integer("version").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  gateIdx: index("evidence_template_gate_idx").on(table.gateCode),
+  artifactIdx: index("evidence_template_artifact_idx").on(table.artifactId),
+}));
