@@ -19,8 +19,9 @@ import {
 import {
   ArrowLeft, User, FileText, GitBranch, Save,
   Target, Shield, TrendingUp, Layers, BarChart,
-  Gauge, Crosshair
+  Gauge, Crosshair, Upload, Trash2, AlertTriangle, FileIcon
 } from "lucide-react";
+import { toast } from "sonner";
 import { hasPermission } from "@/lib/permissions";
 import { getPersonaAdjustments, type PersonaAttributes } from "@/lib/weights";
 import { PageHelp, TabHelp } from "@/components/ui/help-tip";
@@ -44,6 +45,11 @@ export default function PersonaPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // Strategic documents
+  const [docs, setDocs] = useState<any[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   const role = (session?.user as any)?.role;
   const canEdit = hasPermission(role, "edit_persona");
@@ -57,7 +63,51 @@ export default function PersonaPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchPersona(); }, [fetchPersona]);
+  const fetchDocs = useCallback(async () => {
+    setDocsLoading(true);
+    try {
+      const res = await fetch("/api/persona/documents");
+      if (res.ok) setDocs(await res.json());
+    } catch { /* ignore */ }
+    setDocsLoading(false);
+  }, []);
+
+  useEffect(() => { fetchPersona(); fetchDocs(); }, [fetchPersona, fetchDocs]);
+
+  async function handleDocUpload(file: File) {
+    const ALLOWED = ["pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "csv", "png", "jpg", "jpeg", "txt"];
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    if (!ALLOWED.includes(ext)) {
+      toast.error(`File type .${ext} not allowed`);
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error("File too large (max 25MB)");
+      return;
+    }
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/persona/documents", { method: "POST", body: formData });
+    if (res.ok) {
+      toast.success(`Uploaded — ${file.name}`);
+      fetchDocs();
+    } else {
+      const err = await res.json();
+      toast.error(err.error || "Upload failed");
+    }
+    setUploading(false);
+  }
+
+  async function deleteDoc(docId: string, filename: string) {
+    const res = await fetch(`/api/persona/documents?id=${docId}`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success(`Deleted — ${filename}`);
+      fetchDocs();
+    } else {
+      toast.error("Delete failed");
+    }
+  }
 
   function updateField(field: string, value: any) {
     if (!persona) return;
@@ -302,13 +352,96 @@ export default function PersonaPage() {
 
         {/* ── Documents Tab ─────────────────────────────────── */}
         <TabsContent value="docs" className="mt-4">
-          <Card className="bg-stone-800 border-stone-700 p-6 text-center">
-            <FileText className="w-10 h-10 text-stone-600 mx-auto mb-3" />
-            <h3 className="text-stone-300 font-medium">Strategic Documents</h3>
-            <p className="text-stone-500 text-sm mt-1 max-w-md mx-auto">
-              Upload strategic memos, acquisition playbooks, and reference documents that define the acquirer&apos;s investment thesis. These will be available as context across all evaluations.
-            </p>
-            <p className="text-stone-600 text-xs mt-4">Document upload available in the next release.</p>
+          <Card className="bg-stone-800 border-stone-700 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-white font-medium">Strategic Documents</h3>
+                <p className="text-stone-400 text-sm mt-0.5">
+                  Upload strategic memos, acquisition playbooks, and reference documents that define the investment thesis.
+                </p>
+              </div>
+              <Badge variant="outline" className="border-stone-600 text-stone-500 text-xs">
+                {docs.length} document{docs.length !== 1 ? "s" : ""}
+              </Badge>
+            </div>
+
+            {/* Drop zone */}
+            {canEdit && (
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleDocUpload(f); }}
+                onClick={() => document.getElementById("persona-doc-input")?.click()}
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer mb-4 ${
+                  dragOver ? "border-amber-500 bg-amber-900/10" : "border-stone-600 hover:border-stone-500 bg-stone-900/50"
+                }`}
+              >
+                <input
+                  id="persona-doc-input"
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.csv,.png,.jpg,.jpeg,.txt"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDocUpload(f); e.target.value = ""; }}
+                />
+                {uploading ? (
+                  <div className="space-y-2">
+                    <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                    <p className="text-stone-400 text-sm">Uploading...</p>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 text-stone-500 mx-auto mb-2" />
+                    <p className="text-stone-300 text-sm">Drop files here or click to browse</p>
+                    <p className="text-stone-500 text-[10px] mt-1">PDF, DOCX, XLSX, PPTX, CSV, PNG, JPG &middot; Max 25MB</p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Document list */}
+            {docsLoading ? (
+              <p className="text-stone-500 text-sm text-center py-4">Loading documents...</p>
+            ) : docs.length === 0 ? (
+              <p className="text-stone-500 text-sm text-center py-4">
+                No documents uploaded yet. Drop files above to get started.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {docs.map((doc: any) => {
+                  const ext = doc.fileType?.toUpperCase() || doc.filename?.split(".").pop()?.toUpperCase() || "";
+                  return (
+                    <div key={doc.id} className="flex items-center gap-3 p-3 rounded-lg bg-stone-900/50 border border-stone-700/50 hover:border-stone-600 transition-colors group">
+                      <FileIcon className="w-5 h-5 text-stone-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        {doc.blobUrl ? (
+                          <a href={doc.blobUrl} target="_blank" rel="noopener noreferrer" className="text-white text-sm hover:text-amber-300 truncate block">
+                            {doc.filename}
+                          </a>
+                        ) : (
+                          <p className="text-white text-sm truncate">{doc.filename}</p>
+                        )}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge variant="outline" className="border-stone-600 text-stone-500 text-[10px] uppercase">{ext}</Badge>
+                          <span className="text-stone-500 text-[10px]">
+                            {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}
+                          </span>
+                        </div>
+                      </div>
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-stone-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0"
+                          onClick={() => deleteDoc(doc.id, doc.filename)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Card>
         </TabsContent>
       </Tabs>

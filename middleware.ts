@@ -33,6 +33,7 @@ export const config = {
     "/api/targets/:path*",
     "/api/evaluations/:path*",
     "/api/evidence/:path*",
+    "/api/persona",
     "/api/persona/:path*",
     "/api/weights/:path*",
     "/api/admin/:path*",

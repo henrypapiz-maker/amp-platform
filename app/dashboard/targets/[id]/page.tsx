@@ -284,8 +284,9 @@ export default function TargetDetailPage() {
     <div>
       {/* ── Target Header ──────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-6">
-        <Button variant="ghost" size="sm" onClick={() => router.push("/dashboard")} className="text-stone-400 hover:text-white">
+        <Button variant="ghost" size="sm" onClick={() => router.push("/dashboard")} className="text-stone-400 hover:text-white gap-1.5">
           <ArrowLeft className="w-4 h-4" />
+          <span className="text-xs">Pipeline</span>
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-serif text-white">{target.name}</h1>
