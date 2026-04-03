@@ -55,6 +55,74 @@ async function seedV2() {
   // ── 1. Create PE Platform Build Template ────────────────
   console.log("\n  Creating PE Platform Build template...");
 
+  // Skip if already exists (idempotent seed)
+  const [existingTemplate] = await db.select().from(v2.methodologyTemplates)
+    .where(eq(v2.methodologyTemplates.slug, "pe-platform-build")).limit(1);
+
+  if (existingTemplate) {
+    console.log(`  ⏭️  PE Platform Build already exists (${existingTemplate.id}) — skipping to new templates`);
+
+    // Still seed the 4 new templates
+    const additionalTemplates = [
+      { config: PE_BOLT_ON_TEMPLATE, lenses: BOLT_ON_LENSES },
+      { config: CORPORATE_STRATEGIC_TEMPLATE, lenses: CORPORATE_STRATEGIC_LENSES },
+      { config: FAMILY_OFFICE_TEMPLATE, lenses: FAMILY_OFFICE_LENSES },
+      { config: GROWTH_EQUITY_TEMPLATE, lenses: GROWTH_EQUITY_LENSES },
+    ];
+
+    for (const { config, lenses } of additionalTemplates) {
+      // Skip if this template already exists too
+      const [existing] = await db.select().from(v2.methodologyTemplates)
+        .where(eq(v2.methodologyTemplates.slug, config.slug)).limit(1);
+      if (existing) {
+        console.log(`  ⏭️  ${config.name} already exists — skipping`);
+        continue;
+      }
+
+      console.log(`\n  Creating ${config.name} template...`);
+      const [tmpl] = await db.insert(v2.methodologyTemplates).values({
+        name: config.name, slug: config.slug, archetype: config.archetype,
+        description: config.description, version: config.version,
+        gatesConfig: config.gatesConfig, personaSchema: config.personaSchema,
+        weightPropagationRules: config.weightPropagationRules,
+        isPublished: config.isPublished, isDefault: false,
+        publishedAt: new Date(), authoredBy: config.authoredBy, changeLog: config.changeLog,
+      }).returning();
+      console.log(`  ✅ Template: ${tmpl.name} (${tmpl.id})`);
+
+      for (const gate of config.gatesConfig as any[]) {
+        await db.insert(v2.evaluationModules).values({
+          templateId: tmpl.id, gateCode: gate.code,
+          name: `${gate.name} — Standard`, slug: `${config.slug}-${gate.code.toLowerCase()}-standard`,
+          description: gate.purpose, dimensionsConfig: gate.dimensions,
+          evidenceArtifacts: gate.evidenceArtifacts,
+          minimumScore: gate.minimumScore?.toString() || null,
+          declineThreshold: gate.declineThreshold?.toString() || null,
+          isDefault: true, source: "alio_foundry", authorName: "Alio Foundry",
+        });
+      }
+      console.log(`  ✅ ${(config.gatesConfig as any[]).length} modules created`);
+
+      for (const lens of lenses) {
+        await db.insert(v2.evaluationLenses).values({
+          gateCode: lens.gateCode, dimensionName: lens.dimensionName,
+          name: lens.name, framework: lens.framework, guidance: lens.guidance,
+          keyQuestions: lens.keyQuestions, evidenceNeeds: lens.evidenceNeeds,
+          calibrationAnchors: lens.calibrationAnchors, blindSpots: lens.blindSpots,
+          templateId: tmpl.id, isDefault: lens.isDefault,
+          source: "alio_foundry", authorName: "Alio Foundry",
+        });
+      }
+      console.log(`  ✅ ${lenses.length} lenses created`);
+    }
+
+    const totalLenses = PE_PLATFORM_LENSES.length + BOLT_ON_LENSES.length + CORPORATE_STRATEGIC_LENSES.length + FAMILY_OFFICE_LENSES.length + GROWTH_EQUITY_LENSES.length;
+    console.log("\n✅ v2 Seed complete (incremental)!");
+    console.log(`  • New templates seeded (skipped existing)`);
+    console.log(`  • ${totalLenses} total lenses across all templates`);
+    return;
+  }
+
   const [template] = await db.insert(v2.methodologyTemplates).values({
     name: "PE Platform Build",
     slug: "pe-platform-build",
