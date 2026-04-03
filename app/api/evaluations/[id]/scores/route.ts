@@ -183,6 +183,31 @@ export async function PATCH(
     }
   }
 
+  // FIX-4: Snapshot prior score before overwrite
+  const [priorScore] = await db
+    .select()
+    .from(dimensionScores)
+    .where(
+      and(
+        eq(dimensionScores.evaluationId, params.id),
+        eq(dimensionScores.dimensionName, dimensionName)
+      )
+    )
+    .limit(1);
+
+  let scoreHistory: any[] = ((priorScore as any)?.scoreHistory as any[]) || [];
+  if (priorScore?.score !== null && priorScore?.score !== undefined) {
+    scoreHistory = [
+      ...scoreHistory,
+      {
+        score: priorScore.score,
+        rationale: priorScore.rationale,
+        scoredBy: priorScore.confirmedBy,
+        scoredAt: priorScore.confirmedAt?.toISOString?.() || new Date().toISOString(),
+      },
+    ];
+  }
+
   // Update
   const [updated] = await db
     .update(dimensionScores)
@@ -191,7 +216,8 @@ export async function PATCH(
       rationale: rationale || null,
       confirmedBy: userId,
       confirmedAt: new Date(),
-    })
+      scoreHistory: scoreHistory.length > 0 ? scoreHistory : undefined,
+    } as any)
     .where(
       and(
         eq(dimensionScores.evaluationId, params.id),

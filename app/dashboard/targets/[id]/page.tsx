@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,7 @@ import { hasPermission } from "@/lib/permissions";
 import { HelpTip, TabHelp } from "@/components/ui/help-tip";
 import ModuleSelection from "@/components/evaluation/ModuleSelection";
 import { GateStatusBar } from "@/components/evaluation/CrystallizationUI";
+import { toast } from "sonner";
 
 // ── Types ──────────────────────────────────────────────────────
 type DimScore = {
@@ -113,6 +114,8 @@ export default function TargetDetailPage() {
   const [evidenceArtifactLabel, setEvidenceArtifactLabel] = useState("");
   // v2: module selection state
   const [showModuleSelect, setShowModuleSelect] = useState<string | null>(null);
+  // FIX-1: Track whether initial gate has been set to prevent auto-redirect on data refresh
+  const initialGateSet = useRef(false);
 
   const role = (session?.user as any)?.role;
   const canScore = hasPermission(role, "score_dimension");
@@ -124,8 +127,10 @@ export default function TargetDetailPage() {
     if (res.ok) {
       const data = await res.json();
       setTarget(data);
-      if (!target && data.currentGate !== undefined) {
+      // FIX-1: Only set activeGate on first load — never reset from server data after that
+      if (!initialGateSet.current && data.currentGate !== undefined) {
         setActiveGate(`G${data.currentGate}`);
+        initialGateSet.current = true;
       }
     }
     setLoading(false);
@@ -170,25 +175,35 @@ export default function TargetDetailPage() {
 
   async function saveScore(evaluationId: string, dimensionName: string, score: number, rationale: string) {
     setSaving(true);
-    await fetch(`/api/evaluations/${evaluationId}/scores`, {
+    const res = await fetch(`/api/evaluations/${evaluationId}/scores`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dimensionName, score, rationale }),
     });
     await fetchTarget();
     setSaving(false);
+    if (res.ok) {
+      toast.success(`Score saved — ${dimensionName}`);
+    } else {
+      toast.error("Failed to save score");
+    }
   }
 
   async function addEvidence(evaluationId: string, artifactId: string, data: {
     linkType: string; label: string; ref: string; note?: string;
   }) {
-    await fetch("/api/evidence", {
+    const res = await fetch("/api/evidence", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ evaluationId, evidenceArtifactId: artifactId, ...data }),
     });
     await fetchTarget();
     setEvidenceDialogOpen(false);
+    if (res.ok) {
+      toast.success(`Evidence attached — ${data.label}`);
+    } else {
+      toast.error("Failed to attach evidence");
+    }
   }
 
   async function deleteEvidence(evidenceId: string) {
@@ -459,6 +474,7 @@ export default function TargetDetailPage() {
                       evaluation={currentEval}
                       gateDef={currentGateDef}
                       canScore={canScore}
+                      weights={gateWeights}
                     />
                   </TabsContent>
 
@@ -818,26 +834,53 @@ function EvidenceForm({
 
 // ── Gate Score Panel ───────────────────────────────────────────
 function GateScorePanel({
-  evaluation, gateDef, canScore,
+  evaluation, gateDef, canScore, weights,
 }: {
   evaluation: Evaluation;
   gateDef: GateDefinition;
   canScore: boolean;
+  weights: WeightInfo[];
 }) {
-  if (!evaluation.compositeScore) return null;
+  // FIX-2: Compute live composite from current scores + weights (client-side preview)
+  const scoredDims = evaluation.scores.filter(s => s.score !== null && s.score !== undefined);
+  const liveComposite = (() => {
+    if (scoredDims.length === 0) return null;
+    let totalWeight = 0;
+    let weightedSum = 0;
+    for (const s of scoredDims) {
+      const w = weights.find(w => w.dimensionName === s.dimensionName);
+      const dimDef = gateDef.dimensions.find(d => d.name === s.dimensionName);
+      const effectiveWeight = w?.effectiveWeight || dimDef?.weight || 0;
+      totalWeight += effectiveWeight;
+      weightedSum += Number(s.score) * effectiveWeight;
+    }
+    return totalWeight > 0 ? (weightedSum / totalWeight) * 10 : null;
+  })();
 
-  const score = Number(evaluation.compositeScore);
-  const passed = gateDef.minimumScore ? score >= gateDef.minimumScore : true;
-  const declined = gateDef.declineThreshold ? score < gateDef.declineThreshold : false;
+  const serverScore = evaluation.compositeScore ? Number(evaluation.compositeScore) : null;
+  const displayScore = liveComposite ?? serverScore;
+  if (displayScore === null) return null;
+
+  const passed = gateDef.minimumScore ? displayScore >= gateDef.minimumScore : true;
+  const declined = gateDef.declineThreshold ? displayScore < gateDef.declineThreshold : false;
+  const totalDims = gateDef.dimensions.length;
+  const scoredCount = scoredDims.length;
 
   return (
     <div className="bg-stone-900 rounded-lg p-4 border border-stone-700 mt-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-stone-300 font-medium">Gate Composite Score</span>
+        <div>
+          <span className="text-stone-300 font-medium">Gate Composite Score</span>
+          {scoredCount < totalDims && (
+            <span className="text-stone-500 text-xs ml-2">
+              ({scoredCount}/{totalDims} dimensions scored)
+            </span>
+          )}
+        </div>
         <span className={`text-2xl font-mono ${
           passed ? "text-green-400" : declined ? "text-red-400" : "text-amber-400"
         }`}>
-          {score.toFixed(1)}
+          {displayScore.toFixed(1)}
         </span>
       </div>
       <div className="h-2 bg-stone-700 rounded-full overflow-hidden mb-2">
@@ -845,7 +888,7 @@ function GateScorePanel({
           className={`h-full rounded-full transition-all ${
             passed ? "bg-green-500" : declined ? "bg-red-500" : "bg-amber-500"
           }`}
-          style={{ width: `${Math.min(100, score)}%` }}
+          style={{ width: `${Math.min(100, displayScore)}%` }}
         />
       </div>
       <div className="flex items-center justify-between text-xs text-stone-500">
@@ -1022,11 +1065,16 @@ function DimensionCard({
               )}
 
               <div>
-                <Label className="text-stone-400 text-xs">Rationale</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-stone-400 text-xs">Rationale</Label>
+                  <span className={`text-[10px] ${localRationale.length >= 50 ? "text-stone-500" : "text-amber-500"}`}>
+                    {localRationale.length}/50 min
+                  </span>
+                </div>
                 <Textarea
                   value={localRationale}
                   onChange={(e) => setLocalRationale(e.target.value)}
-                  placeholder="Brief rationale for this score..."
+                  placeholder="Provide specific rationale referencing data points, evidence, or rubric anchors (50 char min)..."
                   className="bg-stone-800 border-stone-600 text-white text-sm mt-1"
                   rows={2}
                 />
@@ -1034,12 +1082,17 @@ function DimensionCard({
 
               <Button
                 size="sm"
-                disabled={saving}
+                disabled={saving || (!isBinary && localRationale.length < 50)}
                 onClick={() => onSave(evaluationId, dimension.name, localScore, localRationale)}
                 className="bg-amber-600 hover:bg-amber-700 text-sm"
               >
                 {saving ? "Saving..." : hasBeenScored ? "Update Score" : "Save Score"}
               </Button>
+              {!isBinary && localRationale.length < 50 && localRationale.length > 0 && (
+                <p className="text-amber-500 text-[10px]">
+                  {50 - localRationale.length} more characters needed for rationale
+                </p>
+              )}
             </div>
           )}
 

@@ -57,6 +57,10 @@ export const targets = pgTable("targets", {
   updatedAt: timestamp("updated_at").defaultNow(),
   // v2: deal-level methodology overrides
   dealOverrideId: uuid("deal_override_id"),
+  // v2: FIX-5 — per-deal persona overrides (thesis, horizon, risk tolerance, etc.)
+  personaOverrides: jsonb("persona_overrides"),
+  // v2: FIX-6 — user-defined custom dimensions per gate for this deal
+  customDimensions: jsonb("custom_dimensions"),
 });
 
 // ── Gate Evaluations ──────────────────────────────────────────
@@ -98,6 +102,8 @@ export const dimensionScores = pgTable("dimension_scores", {
   confirmedAt: timestamp("confirmed_at"),
   // v2: AI request traceability
   aiRequestId: uuid("ai_request_id"),
+  // v2: FIX-4 — score version history (prior scores preserved as array)
+  scoreHistory: jsonb("score_history"),
 });
 
 // ── Weight Overrides ──────────────────────────────────────────
