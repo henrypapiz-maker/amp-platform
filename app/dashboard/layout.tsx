@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import TopNav from "@/components/layout/TopNav";
+import DemoBrief from "@/components/DemoBrief";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   // v2: Check if org has selected a methodology template
@@ -31,6 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {children}
       </main>
+      <DemoBrief />
     </div>
   );
 }
