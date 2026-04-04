@@ -7,9 +7,9 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import {
-  Layers, Clock, Shield, Target, BookOpen, Scale,
+  Layers, Shield, Target, BookOpen, Scale,
   ChevronRight, ChevronLeft, Sparkles, GitBranch,
-  FileText, Users, BarChart, Zap, X, HelpCircle
+  Users, Zap, X, HelpCircle
 } from "lucide-react";
 
 // ── Demo Brief Content ────────────────────────────────────────
@@ -54,24 +54,6 @@ const SLIDES = [
       { icon: Sparkles, label: "Custom Dimensions", desc: "Add deal-specific dimensions \u2014 weighted or supplementary" },
     ],
     accent: "green",
-  },
-  {
-    id: "time-savings",
-    badge: "Time Savings",
-    title: "From Weeks to Hours",
-    subtitle: "Measured against real deal workflows",
-    content: "AMP was tested against a live 8-gate bolt-on evaluation (Apex Environmental Services). The structured methodology, embedded rubrics, and automated scoring eliminated hours of manual work per gate.",
-    highlights: [
-      { icon: Clock, label: "70% Faster Scoring", desc: "Rubrics inline, no spreadsheet lookup. Composite auto-calculated." },
-      { icon: FileText, label: "Drag-and-Drop Evidence", desc: "Upload files directly \u2014 no SharePoint round-trips" },
-      { icon: BarChart, label: "Instant IC Readiness", desc: "Gate scores, approvals, and methodology all in one view" },
-    ],
-    stats: [
-      { value: "5\u21922", unit: "steps", label: "to attach evidence" },
-      { value: "0", unit: "spreadsheets", label: "required for scoring" },
-      { value: "100%", unit: "audit trail", label: "every score versioned" },
-    ],
-    accent: "purple",
   },
   {
     id: "knowledge",
@@ -206,18 +188,6 @@ export default function DemoBrief() {
               </div>
             )}
 
-            {/* Stats (time savings slide) */}
-            {current.stats && (
-              <div className="grid grid-cols-3 gap-3">
-                {current.stats.map((stat, i) => (
-                  <div key={i} className={`text-center p-3 rounded-lg ${colors.bg} border ${colors.border}`}>
-                    <div className={`text-2xl font-mono font-bold ${colors.text}`}>{stat.value}</div>
-                    <div className="text-stone-500 text-[10px] uppercase tracking-wider mt-0.5">{stat.unit}</div>
-                    <div className="text-stone-400 text-[10px] mt-0.5">{stat.label}</div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Footer Navigation */}

@@ -6,7 +6,8 @@ import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Download, Printer, FileText } from "lucide-react";
+import { ArrowLeft, Download, Printer, FileText, Presentation } from "lucide-react";
+import { toast } from "sonner";
 import { GATES } from "@/lib/gates";
 
 type Evaluation = {
@@ -64,6 +65,30 @@ export default function ExportPage() {
     window.print();
   }
 
+  async function handleDownloadPPTX() {
+    toast.info("Generating PPTX report...");
+    try {
+      const res = await fetch(`/api/export/${params.targetId}/pptx`);
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.error || "PPTX generation failed");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${target?.name || "IC-Scorecard"}.pptx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("PPTX downloaded");
+    } catch {
+      toast.error("Download failed");
+    }
+  }
+
   if (loading) return <div className="text-stone-400 text-center py-12">Loading export data...</div>;
   if (!target) return <div className="text-stone-400 text-center py-12">Target not found</div>;
 
@@ -88,6 +113,10 @@ export default function ExportPage() {
           <h1 className="text-2xl font-serif text-white">IC Scorecard Export</h1>
           <p className="text-stone-400 text-sm">{target.name}</p>
         </div>
+        <Button onClick={handleDownloadPPTX} variant="outline" className="border-amber-600 text-amber-400 hover:bg-amber-600 hover:text-white">
+          <Download className="w-4 h-4 mr-1.5" />
+          Download PPTX
+        </Button>
         <Button onClick={handlePrint} className="bg-amber-600 hover:bg-amber-700">
           <Printer className="w-4 h-4 mr-1.5" />
           Print / Save PDF

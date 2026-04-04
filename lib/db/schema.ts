@@ -238,3 +238,32 @@ export const aiAuditLog = pgTable("ai_audit_log", {
   responseSummary: text("response_summary"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ── Report Configuration (admin-configurable IC report settings) ──
+export const reportConfig = pgTable("report_config", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id).unique(),
+  // Branding
+  companyName: text("company_name").default(""),
+  primaryColor: text("primary_color").default("#D97706"), // amber-600
+  accentColor: text("accent_color").default("#1C1917"),   // stone-900
+  logoUrl: text("logo_url"),
+  fontFamily: text("font_family").default("Calibri"),
+  // Section toggles
+  includeTitle: boolean("include_title").default(true),
+  includeExecSummary: boolean("include_exec_summary").default(true),
+  includePersona: boolean("include_persona").default(true),
+  includeGateOverview: boolean("include_gate_overview").default(true),
+  includeGateDetails: boolean("include_gate_details").default(true),
+  includeRiskSummary: boolean("include_risk_summary").default(true),
+  includeEvidenceSummary: boolean("include_evidence_summary").default(true),
+  includeScoreHistory: boolean("include_score_history").default(false),
+  // Gate detail mode
+  gateDetailMode: text("gate_detail_mode").default("scored_only"), // "all" | "scored_only"
+  // Custom text
+  footerText: text("footer_text").default("Confidential — For Investment Committee Use Only"),
+  disclaimerText: text("disclaimer_text"),
+  // Metadata
+  updatedBy: uuid("updated_by").references(() => users.id),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});

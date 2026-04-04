@@ -16,6 +16,8 @@ const permissions: Record<string, Role[]> = {
   "view_audit": ["admin"],
   "upload_evidence": ["admin", "analyst"],
   "delete_evidence": ["admin", "analyst"],
+  "export_pptx": ["admin", "analyst", "viewer"],
+  "configure_reports": ["admin"],
 };
 
 export function hasPermission(role: string | undefined, action: string): boolean {
